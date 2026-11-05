@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MinamicDuo Task Tracker</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#14181f;--mut:#5b6472;--card:#fff;--line:#e2e6ec;--acc:#2563eb;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1319;--fg:#e8ecf2;--mut:#98a2b3;--card:#171c24;--line:#262d38;--acc:#6ea0ff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1319;--fg:#e8ecf2;--mut:#98a2b3;--card:#171c24;--line:#262d38;--acc:#6ea0ff;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px 14px 40px}
+h1{font-size:22px;margin:0 0 2px}
+.sub{color:var(--mut);margin:0 0 12px}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s}
+.tabs,.weeks{display:flex;gap:6px;overflow-x:auto;padding:10px 0}
+button.t{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;padding:8px 12px;font:inherit;cursor:pointer;white-space:nowrap}
+button.t.on{background:var(--acc);border-color:var(--acc);color:#fff}
+button.t small{display:block;font-size:11px;opacity:.8}
+.head{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.head b{font-size:17px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.day{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.day h3{margin:0 0 8px;font-size:15px;display:flex;justify-content:space-between}
+.day h3 span{color:var(--mut);font-weight:400;font-size:13px}
+label.k{display:flex;gap:8px;align-items:flex-start;padding:7px 8px;border-left:4px solid var(--c);border-radius:6px;background:color-mix(in srgb,var(--c) 10%,transparent);margin-bottom:4px;cursor:pointer}
+label.k input{margin-top:3px;accent-color:var(--c);flex:none}
+label.k.d .tt{text-decoration:line-through;opacity:.55}
+label.k b{font-size:11px;color:var(--c);display:block}
+.rest{padding:7px 8px;border-radius:6px;border:1px dashed var(--line);color:var(--mut);font-size:13px}
+.note{color:var(--mut);font-size:13px;margin-top:14px}
+.hide{display:none}
+#ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+#ov.hide{display:none}
+.dlg{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:16px;width:min(460px,100%)}
+.dlg textarea,.dlg select,.dlg input[type=text],.dlg input[type=password]{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px;width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.ib{margin-left:auto;border:0;background:transparent;color:var(--mut);cursor:pointer;font-size:15px;padding:0 4px}
+.add{border:1px dashed var(--line);background:transparent;color:var(--mut);border-radius:6px;padding:6px;width:100%;font:inherit;cursor:pointer;margin-bottom:4px}
+.msg{color:#e11d48;font-size:13px;min-height:18px;margin:6px 0 0}
+</style>
+</head>
+<body>
+<main>
+<h1 id="ttl">MinamicDuo Task Tracker</h1>
+<p class="sub" id="who">Tick things off and everyone on the team sees it straight away</p>
+<div class="bar"><i id="allbar"></i></div>
+<p class="sub" id="alltxt" style="margin-top:6px"></p>
+<div class="tabs"><button class="t on" data-v="list">Checklist</button><button class="t" data-v="team">Team</button><button class="t" id="adminbtn" style="margin-left:auto">Admin</button></div>
+<section id="list"><div class="weeks" id="cats"></div><div id="body"></div></section>
+<section id="team" class="hide"></section>
+<p class="note" id="foot"></p>
+</main>
+<div id="ov" class="hide"><div class="dlg" id="dlg"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+/* ===== 1. Paste your two Supabase values here (Project Settings > API) ===== */
+const SUPABASE_URL = "https://qwsbgkawwraylcdbtacz.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_owaIlkNY5JtCFyzlzvVXmQ_G3RrOIz5";
+const TITLE = "Server Task Checklist";
+/* ========================================================================== */
+
+const $=x=>document.getElementById(x);
+const esc=x=>String(x==null?"":x).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+const PAL=["#d97706","#2563eb","#0d9488","#7c3aed","#0891b2","#e11d48","#c026d3","#65a30d","#64748b","#78808c"];
+document.title=TITLE;$("ttl").textContent=TITLE;
+
+let T=[],view="list",filt="All",admin=false,code="",me="";
+try{me=localStorage.getItem("team-checklist-name")||"";code=sessionStorage.getItem("team-checklist-admin")||""}catch(e){}
+
+const ready=SUPABASE_URL.startsWith("http")&&window.supabase;
+const sb=ready?supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+
+const cats=()=>[...new Set(T.map(t=>t.category))];
+const colour=c=>PAL[Math.max(0,cats().indexOf(c))%PAL.length];
+const fmt=d=>new Date(d).toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+
+async function load(){
+  if(!sb){$("body").innerHTML=`<div class="head"><b>Not connected yet</b><div class="sub" style="margin:4px 0 0">Paste your Supabase URL and anon key into the top of this file (the section marked 1).</div></div>`;return}
+  const {data,error}=await sb.from("tasks").select("*").order("sort").order("created_at");
+  if(error){$("body").innerHTML=`<div class="head"><b>Couldn’t load tasks</b><div class="sub" style="margin:4px 0 0">${esc(error.message)}. Check the URL, the key and that the SQL setup ran.</div></div>`;return}
+  T=data;draw()
+}
+let timer;const soon=()=>{clearTimeout(timer);timer=setTimeout(load,150)};
+
+function draw(){
+  const done=T.filter(t=>t.done).length;
+  $("allbar").style.width=(T.length?done/T.length*100:0)+"%";
+  $("alltxt").textContent=T.length?`${done} of ${T.length} tasks done (${Math.round(done/T.length*100)}%)`:"No tasks yet";
+  $("who").innerHTML=me?`Ticking as <b>${esc(me)}</b> · <a href="#" id="chg" style="color:var(--acc)">change name</a>`:"Tick things off and everyone on the team sees it straight away";
+  const c=$("chg");if(c)c.onclick=e=>{e.preventDefault();askName()};
+  $("adminbtn").textContent=admin?"Admin on":"Admin";$("adminbtn").classList.toggle("on",admin);
+  $("foot").textContent=admin?"Admin mode: use ✎ to edit a task, and the buttons in each list to add or import.":"";
+  $("list").classList.toggle("hide",view!="list");$("team").classList.toggle("hide",view!="team");
+  drawCats();drawList();drawTeam()
+}
+function drawCats(){
+  const cs=cats();if(filt!="All"&&!cs.includes(filt))filt="All";
+  $("cats").innerHTML=["All",...cs].map(c=>{const n=c=="All"?T:T.filter(t=>t.category==c);return `<button class="t ${c==filt?"on":""}" data-c="${esc(c)}">${esc(c)}<small>${n.filter(t=>t.done).length}/${n.length}</small></button>`}).join("");
+  $("cats").querySelectorAll("button").forEach(b=>b.onclick=()=>{filt=b.dataset.c;draw()})
+}
+function row(t){const col=colour(t.category);
+  return `<label class="k ${t.done?"d":""}" style="--c:${col}"><input type="checkbox" ${t.done?"checked":""} data-id="${t.id}"><span><span class="tt">${esc(t.title)}</span>${t.done&&t.done_by?`<b>✓ ${esc(t.done_by)}${t.done_at?" · "+fmt(t.done_at):""}</b>`:""}</span>${admin?`<button type="button" class="ib" title="Edit" data-ed="${t.id}">✎</button>`:""}</label>`}
+function drawList(){
+  const cs=filt=="All"?cats():[filt];let h="";
+  if(!T.length){h=`<div class="head"><b>No tasks yet</b><div class="sub" style="margin:4px 0 0">${admin?"Use Import tasks below to paste your list.":"The admin hasn’t added any tasks yet."}</div></div>`}
+  else{const sel=filt=="All"?T:T.filter(t=>t.category==filt),d=sel.filter(t=>t.done).length;
+    h=`<div class="head"><b>${esc(filt=="All"?"Everything":filt)}</b><div class="sub" style="margin:2px 0 8px">${d}/${sel.length} done</div><div class="bar"><i style="width:${sel.length?d/sel.length*100:0}%"></i></div></div>`}
+  h+=`<div class="grid">`;
+  cs.forEach(c=>{const it=T.filter(t=>t.category==c),d=it.filter(t=>t.done).length;
+    h+=`<div class="day"><h3>${esc(c)}<span>${d}/${it.length}</span></h3>${it.map(row).join("")}${admin?`<button type="button" class="add" data-add="${esc(c)}">+ Add task</button>`:""}</div>`});
+  h+=`</div>`;
+  if(admin)h+=`<p class="row"><button type="button" class="t" id="imp">Import tasks</button><button type="button" class="t" data-add="">+ New category task</button></p>`;
+  $("body").innerHTML=h;
+  $("body").querySelectorAll("input[data-id]").forEach(i=>i.onchange=()=>tick(i.dataset.id,i.checked));
+  $("body").querySelectorAll("[data-ed]").forEach(b=>b.onclick=e=>{e.preventDefault();editD(b.dataset.ed)});
+  $("body").querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>editD(null,b.dataset.add));
+  const im=$("imp");if(im)im.onclick=importD
+}
+function drawTeam(){
+  const m={};T.filter(t=>t.done&&t.done_by).forEach(t=>(m[t.done_by]=m[t.done_by]||[]).push(t));
+  const names=Object.keys(m).sort((a,b)=>m[b].length-m[a].length);
+  if(!names.length){$("team").innerHTML=`<div class="head"><b>Nobody has ticked anything yet</b></div>`;return}
+  $("team").innerHTML=`<div class="grid">${names.map((n,i)=>`<div class="day"><h3>${esc(n)}<span>${m[n].length} done</span></h3>${m[n].sort((a,b)=>new Date(b.done_at)-new Date(a.done_at)).map(t=>`<div class="rest" style="margin-bottom:4px;border-style:solid">${esc(t.title)}</div>`).join("")}</div>`).join("")}</div>`
+}
+
+async function tick(id,v){
+  if(!me){askName(()=>tick(id,v));draw();return}
+  const t=T.find(x=>x.id==id);if(!t)return;
+  t.done=v;t.done_by=v?me:null;t.done_at=v?new Date().toISOString():null;draw();
+  const {error}=await sb.from("tasks").update({done:v,done_by:t.done_by,done_at:t.done_at}).eq("id",id);
+  if(error){load()}
+}
+
+/* dialogs */
+function open(html){$("dlg").innerHTML=html;$("ov").classList.remove("hide")}
+function close(){$("ov").classList.add("hide")}
+function askName(then){
+  open(`<h3 style="margin:0 0 10px">What’s your name?</h3><input type="text" id="nm" value="${esc(me)}" placeholder="Your Minecraft name" maxlength="30"><p class="sub" style="margin:6px 0 0;font-size:13px">Shown next to the tasks you tick.</p><div class="row"><button type="button" class="t on" id="ok">Save</button><button type="button" class="t" id="no">Cancel</button></div>`);
+  $("nm").focus();
+  $("ok").onclick=()=>{const v=$("nm").value.trim();if(!v)return;me=v;try{localStorage.setItem("team-checklist-name",v)}catch(e){}close();draw();if(then)then()};
+  $("no").onclick=close
+}
+$("adminbtn").onclick=()=>{
+  if(admin){admin=false;code="";try{sessionStorage.removeItem("team-checklist-admin")}catch(e){}draw();return}
+  open(`<h3 style="margin:0 0 10px">Admin code</h3><input type="password" id="ac" autocomplete="off"><p class="msg" id="am"></p><div class="row"><button type="button" class="t on" id="ok">Unlock</button><button type="button" class="t" id="no">Cancel</button></div>`);
+  $("ac").focus();
+  const go=async()=>{const c=$("ac").value.trim();if(!sb){$("am").textContent="Not connected: the Supabase URL or key at the top of the file is missing.";return}const {data,error}=await sb.rpc("admin_check",{code:c});if(error){$("am").textContent="Supabase error: "+error.message;return}if(!data){$("am").textContent="That code doesn’t match the one in the database.";return}admin=true;code=c;try{sessionStorage.setItem("team-checklist-admin",c)}catch(e){}close();draw()};
+  $("ok").onclick=go;$("ac").onkeydown=e=>{if(e.key=="Enter")go()};$("no").onclick=close
+};
+function editD(id,cat){
+  const t=id?T.find(x=>x.id==id):null;
+  open(`<h3 style="margin:0 0 10px">${t?"Edit task":"Add task"}</h3><textarea id="dt" rows="3" style="width:100%;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px">${esc(t?t.title:"")}</textarea><div class="row"><label style="flex:1">Category <input type="text" id="dc" list="cl" value="${esc(t?t.category:cat||"")}"><datalist id="cl">${cats().map(c=>`<option value="${esc(c)}">`).join("")}</datalist></label></div><p class="msg" id="am"></p><div class="row"><button type="button" class="t on" id="ok">Save</button><button type="button" class="t" id="no">Cancel</button>${t?`<button type="button" class="t" id="del">Delete</button>`:""}</div>`);
+  $("dt").focus();$("no").onclick=close;
+  $("ok").onclick=async()=>{const title=$("dt").value.trim(),category=$("dc").value.trim()||"General";if(!title)return;
+    const r=t?await sb.rpc("admin_update_task",{code,task_id:id,new_title:title,new_category:category}):await sb.rpc("admin_add_tasks",{code,items:[{category,title}]});
+    if(r.error){$("am").textContent=r.error.message;return}close();load()};
+  if(t)$("del").onclick=async()=>{if(!confirm("Delete this task for everyone?"))return;const r=await sb.rpc("admin_delete_task",{code,task_id:id});if(r.error){$("am").textContent=r.error.message;return}close();load()}
+}
+function parse(txt){let cat="General";const out=[];
+  txt.split(/\r?\n/).forEach(l=>{l=l.trim();if(!l)return;
+    if(l.includes("|")){const i=l.indexOf("|"),c=l.slice(0,i).trim(),t=l.slice(i+1).trim();if(t)out.push({category:c||cat,title:t});return}
+    const b=/^([-*•]|\d+[.)])\s+/.test(l);
+    if(!b&&l.endsWith(":")){cat=l.slice(0,-1).trim()||"General";return}
+    l=l.replace(/^([-*•]|\d+[.)])\s+/,"").trim();if(l)out.push({category:cat,title:l})});
+  return out}
+function importD(){
+  open(`<h3 style="margin:0 0 6px">Import tasks</h3><p class="sub" style="font-size:13px;margin:0 0 8px">Put a category on its own line ending with a colon, then one task per line. Or write <code>Category | Task</code> on each line.</p><textarea id="dt" rows="10" placeholder="Builds:&#10;- Finish spawn castle&#10;- Fix the nether hub&#10;&#10;Redstone:&#10;- Auto sorter for the storage room" style="width:100%;font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea><p class="msg" id="am"></p><div class="row"><button type="button" class="t on" id="ok">Import</button><button type="button" class="t" id="no">Cancel</button></div>`);
+  $("dt").focus();$("no").onclick=close;
+  $("ok").onclick=async()=>{const items=parse($("dt").value);if(!items.length){$("am").textContent="Nothing to import yet.";return}
+    const r=await sb.rpc("admin_add_tasks",{code,items});if(r.error){$("am").textContent=r.error.message;return}close();load()}
+}
+
+document.querySelectorAll(".tabs .t[data-v]").forEach(b=>b.onclick=()=>{view=b.dataset.v;document.querySelectorAll(".tabs .t[data-v]").forEach(x=>x.classList.toggle("on",x==b));draw()});
+
+draw();
+if(sb){
+  if(code)sb.rpc("admin_check",{code}).then(r=>{if(r.data){admin=true;draw()}});
+  load();
+  sb.channel("tasks-live").on("postgres_changes",{event:"*",schema:"public",table:"tasks"},soon).subscribe();
+}else load();
+if(!me&&sb)setTimeout(()=>askName(),400);
+</script>
+</body>
+</html>
